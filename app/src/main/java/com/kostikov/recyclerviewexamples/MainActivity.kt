@@ -12,11 +12,17 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
+
+
         with(recyclerView){
 
             layoutManager = LinearLayoutManager(this@MainActivity)
             adapter = CardsAdapter()
+            itemAnimator = CustomItemAnimator()
+
             setHasFixedSize(true)
         }
+
+        fabAdd.setOnClickListener { (recyclerView.adapter as CardsAdapter).changeList() }
     }
 }

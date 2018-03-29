@@ -4,4 +4,5 @@
     <dimen name="margin">8dp</dimen>
     <dimen name="corner_radius">18dp</dimen>
     <dimen name="header_elevation">4dp</dimen>
+    <dimen name="fab_margin">16dp</dimen>
 </resources>
