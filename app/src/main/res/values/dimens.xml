@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <dimen name="card_text_size">64sp</dimen>
+    <dimen name="margin">8dp</dimen>
+    <dimen name="corner_radius">18dp</dimen>
+    <dimen name="header_elevation">4dp</dimen>
+</resources>
