@@ -1,9 +1,8 @@
 package com.kostikov.recyclerviewexamples
 
-import android.support.v7.app.AppCompatActivity
 import android.os.Bundle
+import android.support.v7.app.AppCompatActivity
 import android.support.v7.widget.LinearLayoutManager
-import android.support.v7.widget.RecyclerView
 import kotlinx.android.synthetic.main.activity_main.*
 
 class MainActivity : AppCompatActivity() {
@@ -12,17 +11,21 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-
-
         with(recyclerView){
 
             layoutManager = LinearLayoutManager(this@MainActivity)
-            adapter = CardsAdapter()
-            itemAnimator = CustomItemAnimator()
+            adapter = CardsAdapter(cardsListData)
+            //itemAnimator = CustomItemAnimator()
 
             setHasFixedSize(true)
         }
 
-        fabAdd.setOnClickListener { (recyclerView.adapter as CardsAdapter).changeList() }
+        fabAll.setOnClickListener {
+            (recyclerView.adapter as CardsAdapter).swapData(cardsListData) }
+        fabDell.setOnClickListener {
+            (recyclerView.adapter as CardsAdapter).swapData(cardsListData.filter {
+                cardEntity -> cardEntity.id.toInt() % 2 == 0 })
+        }
     }
+
 }
