@@ -26,6 +26,7 @@ class CardsAdapter(cardList: List<CardEntity>): RecyclerView.Adapter<CardsAdapte
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
         val card = LayoutInflater.from(parent.context).inflate(R.layout.card_item, parent, false)
+        Log.d("CardsAdapter",  "onCreateViewHolder" )
         return ViewHolder(card)
     }
 
