@@ -6,7 +6,7 @@
     app:cardCornerRadius="@dimen/corner_radius"
     android:layout_width="match_parent"
     android:layout_height="200dp"
-    android:layout_margin="8dp"
+    android:layout_margin="4dp"
 
     android:background="@color/colorPrimaryDark">
 
