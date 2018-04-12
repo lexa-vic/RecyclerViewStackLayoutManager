@@ -93,7 +93,8 @@ public class StackLayoutManager extends RecyclerView.LayoutManager {
         // Делаем detach всех view на экране, помещаем в Scrap
         detachAndScrapAttachedViews(recycler);
 
-        fillStack(recycler, 0, 0);
+        fillDown(0, recycler);
+        //fillStack(recycler, 0, 0);
     }
 
     private void fillStack(RecyclerView.Recycler recycler, int startPosition, int startTopEdge){
@@ -150,6 +151,15 @@ public class StackLayoutManager extends RecyclerView.LayoutManager {
             return 0;
         }
 
+        viewCache.clear();
+
+        for (int i = 0; i < getChildCount(); i++){
+            View view = getChildAt(i);
+            int position = getPosition(view);
+
+            viewCache.put(position, view);
+        }
+
         if (dy > 0)
         {
             fillDown(dy, recycler);
@@ -166,22 +176,13 @@ public class StackLayoutManager extends RecyclerView.LayoutManager {
      * @param recycler RecyclerView.Recycler
      */
     private void fillDown(int dy, RecyclerView.Recycler recycler){
-        int currentPosition = 0;
-        int delta = -dy;
-        int currentTopEdge = 0;
-        int futureTopEdge = 0;
+        int currentPosition;
+        int delta;
+        int currentTopEdge;
+        int futureTopEdge;
         int edgeLimit = 0;
         int finishEdge = 0;
         boolean fillFinish = false;
-
-        viewCache.clear();
-
-        for (int i = 0; i < getChildCount(); i++){
-            View view = getChildAt(i);
-            int position = getPosition(view);
-
-            viewCache.put(position, view);
-        }
 
         currentPosition = viewCache.keyAt(0);
 
@@ -288,7 +289,7 @@ public class StackLayoutManager extends RecyclerView.LayoutManager {
 
                             if (viewCache.get(currentPosition - ONE_ELEMENT_OFFSET) != null &&
                                     getDecoratedTop(viewCache.get(currentPosition - ONE_ELEMENT_OFFSET)) == currentTopEdge) {
-                                //removeAndRecycleView(viewCache.get(currentPosition - ONE_ELEMENT_OFFSET), recycler);
+
                                 detachView(viewCache.get(currentPosition - ONE_ELEMENT_OFFSET));
                                 viewCache.remove(currentPosition - ONE_ELEMENT_OFFSET);
                             }
@@ -310,22 +311,13 @@ public class StackLayoutManager extends RecyclerView.LayoutManager {
 
 
     private void fillUp(int dy, RecyclerView.Recycler recycler){
-        int currentPosition = 0;
-        int delta = -dy;
-        int currentTopEdge = 0;
-        int futureTopEdge = 0;
-        int edgeLimit = getHeight() - mItemHeightInStackInPx;
+        int currentPosition;
+        int delta;
+        int currentTopEdge;
+        int futureTopEdge;
+        int edgeLimit;
         int finishEdge = getHeight();
         boolean fillFinish = false;
-
-        viewCache.clear();
-
-        for (int i = 0; i < getChildCount(); i++){
-            View view = getChildAt(i);
-            int position = getPosition(view);
-
-            viewCache.put(position, view);
-        }
 
         currentPosition = viewCache.keyAt(viewCache.size() - 1);
 
