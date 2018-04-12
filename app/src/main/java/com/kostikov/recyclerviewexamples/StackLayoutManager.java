@@ -310,6 +310,12 @@ public class StackLayoutManager extends RecyclerView.LayoutManager {
     }
 
 
+    /**
+     *
+     * Скролл вверх - раскрываем верхний стек
+     * @param dy смещенние
+     * @param recycler RecyclerView.Recycler
+     */
     private void fillUp(int dy, RecyclerView.Recycler recycler){
         int currentPosition;
         int delta;
@@ -350,7 +356,7 @@ public class StackLayoutManager extends RecyclerView.LayoutManager {
                     layoutDecorated(view, leftEdge, currentTopEdge, rightEdge, currentTopEdge + bottomEdge);
                     //viewCache.put(currentPosition, view);
 
-                    Log.d(TAG, String.format("addView view position %d", currentPosition));
+                    Log.d(TAG, String.format("addView view position %d top %d", currentPosition, view.getTop()));
                 }
 
             } else {
@@ -396,6 +402,7 @@ public class StackLayoutManager extends RecyclerView.LayoutManager {
                                 edgeLimit = mTopMargin;
                             } else {
                                 edgeLimit = currentNextTopEdge - mItemHeightInStackInPx;
+                                edgeLimit = edgeLimit <= mTopMargin ? mTopMargin : edgeLimit;
                             }
                         }
                     }
