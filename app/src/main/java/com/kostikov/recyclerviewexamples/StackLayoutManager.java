@@ -3,7 +3,6 @@ package com.kostikov.recyclerviewexamples;
 import android.content.res.Resources;
 import android.support.annotation.NonNull;
 import android.support.v7.widget.RecyclerView;
-import android.util.Log;
 import android.util.SparseArray;
 import android.util.TypedValue;
 import android.view.View;
@@ -43,6 +42,8 @@ public class StackLayoutManager extends RecyclerView.LayoutManager {
     private int mItemHeightInStackInPx;
 
     private SparseArray<View> mViewCache = new SparseArray<View>();
+    private SparseArray<View> mRemoveCache = new SparseArray<View>();
+
 
     @Override
     public RecyclerView.LayoutParams generateDefaultLayoutParams() {
@@ -52,31 +53,21 @@ public class StackLayoutManager extends RecyclerView.LayoutManager {
     @Override
     public void onLayoutChildren(RecyclerView.Recycler recycler, RecyclerView.State state) {
 
-        //We have nothing to show for an empty data set but clear any existing views
         if (getItemCount() == 0) {
             detachAndScrapAttachedViews(recycler);
             return;
         }
         if (getChildCount() == 0 && state.isPreLayout()) {
-            //Nothing to do during prelayout when empty
             return;
         }
 
-        if (getChildCount() == 0) { //First or empty layout
-            //Scrap measure one child
+        if (getChildCount() == 0) {
             View scrap = recycler.getViewForPosition(0);
             addView(scrap);
             measureChildWithMargins(scrap, 0, 0);
 
-            /*
-             * We make some assumptions in this code based on every child
-             * view being the same size (i.e. a uniform grid). This allows
-             * us to compute the following values up front because they
-             * won't change.
-             */
             mDecoratedChildWidth = getDecoratedMeasuredWidth(scrap);
             mDecoratedChildHeight = getDecoratedMeasuredHeight(scrap);
-
 
             mItemHeightInStackInPx = convertDpToPx(scrap.getResources(), ITEM_HEIGHT_IN_STACK_IN_DP);
             mMaxElementsInStack = getBottomEdgeOfTopStack() / mItemHeightInStackInPx;
@@ -109,12 +100,16 @@ public class StackLayoutManager extends RecyclerView.LayoutManager {
         }
 
         mViewCache.clear();
+        mRemoveCache.clear();
 
         for (int i = 0; i < getChildCount(); i++){
             View view = getChildAt(i);
             int position = getPosition(view);
-
             mViewCache.put(position, view);
+        }
+
+        for (int i = 0; i < mViewCache.size(); i++){
+            detachView(mViewCache.valueAt(i));
         }
 
         if (dy > 0)
@@ -122,6 +117,10 @@ public class StackLayoutManager extends RecyclerView.LayoutManager {
             fillDown(dy, recycler);
         } else {
             fillUp(dy, recycler);
+        }
+
+        for (int i = 0; i < mRemoveCache.size(); i++){
+            recycler.recycleView(mRemoveCache.valueAt(i));
         }
 
         return dy;
@@ -142,8 +141,6 @@ public class StackLayoutManager extends RecyclerView.LayoutManager {
         boolean fillFinish = false;
 
         currentPosition = mViewCache.keyAt(0);
-
-        detachAndScrapAttachedViews(recycler);
 
         while (currentPosition < getItemCount() && !fillFinish){
 
@@ -247,6 +244,8 @@ public class StackLayoutManager extends RecyclerView.LayoutManager {
                                     getDecoratedTop(mViewCache.get(currentPosition - ONE_ELEMENT_OFFSET)) == currentTopEdge) {
 
                                 detachView(mViewCache.get(currentPosition - ONE_ELEMENT_OFFSET));
+
+                                mRemoveCache.put(currentPosition, mViewCache.get(currentPosition - ONE_ELEMENT_OFFSET));
                                 mViewCache.remove(currentPosition - ONE_ELEMENT_OFFSET);
                             }
                         }
@@ -282,8 +281,6 @@ public class StackLayoutManager extends RecyclerView.LayoutManager {
         boolean fillFinish = false;
 
         currentPosition = mViewCache.keyAt(mViewCache.size() - 1);
-
-        detachAndScrapAttachedViews(recycler);
 
         while (currentPosition >= 0 && currentPosition < getItemCount()){
 
@@ -384,9 +381,7 @@ public class StackLayoutManager extends RecyclerView.LayoutManager {
                             }
 
                             if (futureTopEdge >= getHeight()){
-                                //removeAndRecycleView(mViewCache.get(currentPosition), recycler);
-                                detachView(mViewCache.get(currentPosition));
-                                Log.d(TAG, String.format("detachView view position %d", currentPosition + ONE_ELEMENT_OFFSET));
+                                mRemoveCache.put(currentPosition, mViewCache.get(currentPosition));
                                 mViewCache.remove(currentPosition);
                                 currentPosition--;
                                 continue;
@@ -399,8 +394,6 @@ public class StackLayoutManager extends RecyclerView.LayoutManager {
 
                 // Если будущее положения меньше допустимого, выставляем смещение такое чтоб элемент доехал до допустимой границы
                 delta = edgeLimit - futureTopEdge > 0 ? -dy : edgeLimit - currentTopEdge;
-
-                Log.d(TAG, String.format("Attach view position %d %d", currentPosition, delta));
                 view.offsetTopAndBottom(delta);
             }
             currentPosition--;
