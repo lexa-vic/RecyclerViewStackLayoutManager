@@ -27,11 +27,9 @@ public class StackLayoutManager extends RecyclerView.LayoutManager {
      */
     private static final int RELATIVE_SCREEN_PART_TO_STACK = 6;
 
-    /* Consistent size applied to all child views */
+    /* Высота и ширина элементов */
     private int mDecoratedChildWidth;
     private int mDecoratedChildHeight;
-
-    private int mItemHeadInStackHeightInDp;
 
     private int mLeftMargin;
     private int mRightMargin;
@@ -142,7 +140,7 @@ public class StackLayoutManager extends RecyclerView.LayoutManager {
 
         currentPosition = mViewCache.keyAt(0);
 
-        while (currentPosition < getItemCount() && !fillFinish){
+        while (currentPosition < getItemCount()){
 
             // Берем вьюху из кэша detached вьюх
             View view = mViewCache.get(currentPosition);
@@ -163,9 +161,16 @@ public class StackLayoutManager extends RecyclerView.LayoutManager {
 
                 if (mViewCache.get(currentPosition - ONE_ELEMENT_OFFSET) != null){
                     int prevViewEdge = getDecoratedBottom(mViewCache.get(currentPosition - ONE_ELEMENT_OFFSET));
-
+                    // Нижний край заезжает за нижний стек надо складывать остальные в стек
                     if (prevViewEdge >= getTopEdgeOfBottomStack()) {
-                        currentTopEdge = getDecoratedTop(mViewCache.get(currentPosition - ONE_ELEMENT_OFFSET)) + mItemHeightInStackInPx;
+                        int bottomItems = getItemCount() - currentPosition;
+
+                        // Если элементов меньше чем максимальное кол-во в стеке, то они прижаты к низу
+                        if (bottomItems < mMaxElementsInStack) {
+                            currentTopEdge = getHeight() - mItemHeightInStackInPx * bottomItems;
+                        } else {
+                            currentTopEdge = getDecoratedTop(mViewCache.get(currentPosition - ONE_ELEMENT_OFFSET)) + mItemHeightInStackInPx;
+                        }
                     } else {
                         currentTopEdge = prevViewEdge + layoutParams.bottomMargin + layoutParams.topMargin;
                     }
@@ -178,8 +183,8 @@ public class StackLayoutManager extends RecyclerView.LayoutManager {
                     layoutDecorated(view, leftEdge, currentTopEdge, rightEdge, currentTopEdge + bottomEdge);
                     mViewCache.put(currentPosition, view);
                 } else {
-                    fillFinish = true;
                     detachView(view);
+                    break;
                 }
             } else {
                 currentTopEdge = getDecoratedTop(view);
@@ -193,6 +198,7 @@ public class StackLayoutManager extends RecyclerView.LayoutManager {
                     View lastView = mViewCache.get(getItemCount() - ONE_ELEMENT_OFFSET);
                     int lastViewFutureTopEdge = getDecoratedTop(lastView) + delta;
                     int tmpEdgeLimit = getHeight() - mBottomMargin - mDecoratedChildHeight;
+                    fillFinish = true;
                     // После скрола должен полностью быть виден
                     if (lastViewFutureTopEdge <= tmpEdgeLimit) {
                         // Вычисляем максимальное смещение которое может быть для последнего элемента
@@ -208,11 +214,12 @@ public class StackLayoutManager extends RecyclerView.LayoutManager {
                     edgeLimit = getDecoratedBottom(mViewCache.get(currentPosition - ONE_ELEMENT_OFFSET))
                             + layoutParams.bottomMargin + layoutParams.topMargin;
                     // Нижняя граница предыдущего элемента заходит в стек - он вытягивается
-                    if (edgeLimit >= getTopEdgeOfBottomStack()) {
+                    if (edgeLimit >= currentTopEdge) {
                         int prevTopEdge = getDecoratedTop(mViewCache.get(currentPosition - ONE_ELEMENT_OFFSET));
 
-                        // Если вверхняя граница предыдущего элемента за стеком, то тянемся к границе стека
-                        if (prevTopEdge < getTopEdgeOfBottomStack()){
+                        if (fillFinish) {
+                            edgeLimit = currentTopEdge;
+                        } else if (prevTopEdge < getTopEdgeOfBottomStack()){ // Если вверхняя граница предыдущего элемента за стеком, то тянемся к границе стека
                             edgeLimit = getTopEdgeOfBottomStack();
                         } else {
                             // Если предудщий ниже границы стека то соблюдаем отступ до него
@@ -342,6 +349,7 @@ public class StackLayoutManager extends RecyclerView.LayoutManager {
                     if (currentNextTopEdge >= currentBottomEdge){
                         edgeLimit = currentNextTopEdge - mTopMargin - mBottomMargin - mDecoratedChildHeight;
                     } else {
+
                         if (fillFinish){
                             edgeLimit = currentTopEdge;
                         } else  if (currentNextTopEdge > getBottomEdgeOfTopStack()){
