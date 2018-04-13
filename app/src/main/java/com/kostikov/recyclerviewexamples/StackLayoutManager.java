@@ -1,12 +1,15 @@
 package com.kostikov.recyclerviewexamples;
 
+
 import android.content.res.Resources;
 import android.support.annotation.NonNull;
 import android.support.v7.widget.RecyclerView;
+import android.util.Log;
 import android.util.SparseArray;
 import android.util.TypedValue;
 import android.view.View;
 import android.view.ViewGroup;
+
 
 /**
  * @author Kostikov Aleksey.
@@ -41,6 +44,8 @@ public class StackLayoutManager extends RecyclerView.LayoutManager {
 
     private SparseArray<View> mViewCache = new SparseArray<View>();
     private SparseArray<View> mRemoveCache = new SparseArray<View>();
+
+    private ScrollState mScrollState = ScrollState.SCROLL_NA;
 
 
     @Override
@@ -78,24 +83,12 @@ public class StackLayoutManager extends RecyclerView.LayoutManager {
 
             detachAndScrapView(scrap, recycler);
 
+
+
         }
+
         // Делаем detach всех view на экране, помещаем в Scrap
         detachAndScrapAttachedViews(recycler);
-
-        fillDown(0, recycler);
-    }
-
-    @Override
-    public boolean canScrollVertically() {
-        return true;
-    }
-
-    @Override
-    public int scrollVerticallyBy(int dy, RecyclerView.Recycler recycler, RecyclerView.State state) {
-
-        if (getChildCount() == 0 && dy == 0) {
-            return 0;
-        }
 
         mViewCache.clear();
         mRemoveCache.clear();
@@ -110,18 +103,64 @@ public class StackLayoutManager extends RecyclerView.LayoutManager {
             detachView(mViewCache.valueAt(i));
         }
 
+        fillDown(0, recycler);
+
+
+        for (int i = 0; i < mRemoveCache.size(); i++){
+            recycler.recycleView(mRemoveCache.valueAt(i));
+        }
+
+        mScrollState = ScrollState.SCROLL_NA;
+    }
+
+    @Override
+    public boolean canScrollVertically() {
+        return true;
+    }
+
+    @Override
+    public int scrollVerticallyBy(int dy, RecyclerView.Recycler recycler, RecyclerView.State state) {
+        int delta;
+
+        if (getChildCount() == 0 && dy == 0) {
+            return 0;
+        }
+
+        if ((dy > 0 && mScrollState == ScrollState.SCROLL_DOWN_END)
+                || (dy < 0 && mScrollState == ScrollState.SCROLL_UP_END)) {
+            return 0;
+        }
+
+
+        mViewCache.clear();
+        mRemoveCache.clear();
+
+        for (int i = 0; i < getChildCount(); i++){
+            View view = getChildAt(i);
+            int position = getPosition(view);
+            mViewCache.put(position, view);
+        }
+
+        for (int i = 0; i < mViewCache.size(); i++){
+            detachView(mViewCache.valueAt(i));
+
+            Log.d(TAG, String.format("detachView %d ", mViewCache.keyAt(i) ));
+        }
+
         if (dy > 0)
         {
-            fillDown(dy, recycler);
+            delta = fillDown(dy, recycler);
+            mScrollState = delta == 0 ? ScrollState.SCROLL_DOWN_END : ScrollState.SCROLL_NA;
         } else {
-            fillUp(dy, recycler);
+            delta = fillUp(dy, recycler);
+            mScrollState = delta == 0 ? ScrollState.SCROLL_UP_END : ScrollState.SCROLL_NA;
         }
 
         for (int i = 0; i < mRemoveCache.size(); i++){
             recycler.recycleView(mRemoveCache.valueAt(i));
         }
 
-        return dy;
+        return delta != 0 ? dy : 0;
     }
 
     /**
@@ -129,9 +168,10 @@ public class StackLayoutManager extends RecyclerView.LayoutManager {
      * @param dy смещенние
      * @param recycler RecyclerView.Recycler
      */
-    private void fillDown(int dy, RecyclerView.Recycler recycler){
+    private int fillDown(int dy, RecyclerView.Recycler recycler){
         int currentPosition;
         int delta;
+        int returnDelta = 0;
         int currentTopEdge;
         int futureTopEdge;
         int edgeLimit = 0;
@@ -167,7 +207,12 @@ public class StackLayoutManager extends RecyclerView.LayoutManager {
 
                         // Если элементов меньше чем максимальное кол-во в стеке, то они прижаты к низу
                         if (bottomItems < mMaxElementsInStack) {
-                            currentTopEdge = getHeight() - mItemHeightInStackInPx * bottomItems;
+                            // Кроме первого который на границе стека
+                            if (bottomEdge == mMaxElementsInStack - ONE_ELEMENT_OFFSET){
+                                currentTopEdge = getTopEdgeOfBottomStack();
+                            } else {
+                                currentTopEdge = getHeight() - mItemHeightInStackInPx * bottomItems;
+                            }
                         } else {
                             currentTopEdge = getDecoratedTop(mViewCache.get(currentPosition - ONE_ELEMENT_OFFSET)) + mItemHeightInStackInPx;
                         }
@@ -266,9 +311,13 @@ public class StackLayoutManager extends RecyclerView.LayoutManager {
 
                 attachView(view);
                 view.offsetTopAndBottom(delta);
+
+                returnDelta = Math.min(delta, returnDelta);
             }
             currentPosition++;
         }
+
+        return returnDelta;
     }
 
 
@@ -278,9 +327,10 @@ public class StackLayoutManager extends RecyclerView.LayoutManager {
      * @param dy смещенние
      * @param recycler RecyclerView.Recycler
      */
-    private void fillUp(int dy, RecyclerView.Recycler recycler){
+    private int fillUp(int dy, RecyclerView.Recycler recycler){
         int currentPosition;
         int delta;
+        int returnDelta = 0;
         int currentTopEdge;
         int futureTopEdge;
         int edgeLimit;
@@ -314,6 +364,11 @@ public class StackLayoutManager extends RecyclerView.LayoutManager {
                     currentTopEdge = mTopMargin;
 
                     layoutDecorated(view, leftEdge, currentTopEdge, rightEdge, currentTopEdge + bottomEdge);
+
+                    Log.d(TAG, String.format("addView %d ", currentPosition ));
+
+                    mViewCache.put(getPosition(view), view);
+                    detachView(view);
                 }
 
             } else {
@@ -346,6 +401,8 @@ public class StackLayoutManager extends RecyclerView.LayoutManager {
                     int currentNextTopEdge = getDecoratedTop(mViewCache.get(currentPosition + ONE_ELEMENT_OFFSET));
                     int currentBottomEdge = getDecoratedBottom(mViewCache.get(currentPosition)) + mTopMargin + mBottomMargin;
 
+                    Log.d(TAG, String.format("currentTopEdge currentPos %d", currentPosition));
+
                     if (currentNextTopEdge >= currentBottomEdge){
                         edgeLimit = currentNextTopEdge - mTopMargin - mBottomMargin - mDecoratedChildHeight;
                     } else {
@@ -365,7 +422,7 @@ public class StackLayoutManager extends RecyclerView.LayoutManager {
                         }
                     }
 
-                // Элементы ниже верхнего стека
+                    // Элементы ниже верхнего стека
                 } else {
 
                     // Если будущее положение элемента после скрола заезжает на нижний стек
@@ -375,7 +432,10 @@ public class StackLayoutManager extends RecyclerView.LayoutManager {
 
                             edgeLimit = getHeight() - mItemHeightInStackInPx;
 
+                            Log.d(TAG, String.format("mViewCache.size %d currentPos %d", mViewCache.size(), currentPosition));
+
                             if (mViewCache.indexOfValue(view) != mViewCache.size() - 1){
+
                                 edgeLimit = getDecoratedTop(mViewCache.get(currentPosition + ONE_ELEMENT_OFFSET)) - mItemHeightInStackInPx;
                             }
                         } else {
@@ -391,6 +451,7 @@ public class StackLayoutManager extends RecyclerView.LayoutManager {
                             if (futureTopEdge >= getHeight()){
                                 mRemoveCache.put(currentPosition, mViewCache.get(currentPosition));
                                 mViewCache.remove(currentPosition);
+                                Log.d(TAG, String.format("mViewCache.remove %d ", currentPosition ));
                                 currentPosition--;
                                 continue;
                             }
@@ -402,6 +463,8 @@ public class StackLayoutManager extends RecyclerView.LayoutManager {
 
                 // Если будущее положения меньше допустимого, выставляем смещение такое чтоб элемент доехал до допустимой границы
                 delta = edgeLimit - futureTopEdge > 0 ? -dy : edgeLimit - currentTopEdge;
+
+                returnDelta = Math.max(delta, returnDelta);
                 view.offsetTopAndBottom(delta);
             }
             currentPosition--;
@@ -412,6 +475,8 @@ public class StackLayoutManager extends RecyclerView.LayoutManager {
             View view = mViewCache.valueAt(i);
             attachView(view);
         }
+
+        return returnDelta;
     }
 
     /**
@@ -481,5 +546,11 @@ public class StackLayoutManager extends RecyclerView.LayoutManager {
      */
     private int convertDpToPx(@NonNull Resources resources, int dp){
         return Math.round(TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, dp, resources.getDisplayMetrics()));
+    }
+
+    private enum ScrollState {
+        SCROLL_NA,
+        SCROLL_DOWN_END,
+        SCROLL_UP_END;
     }
 }
