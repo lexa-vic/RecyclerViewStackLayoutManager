@@ -172,92 +172,94 @@ public class StackLayoutManager2 extends RecyclerView.LayoutManager {
         return dy;
     }
 
-    private void scrollDown(int dy, RecyclerView.Recycler recycler){
+    private int scrollDown(int dy, RecyclerView.Recycler recycler){
         int currentPosition;
         int delta = -dy;
-        int returnDelta = 0;
-        int currentTopEdge;
-        int futureTopEdge;
-        int edgeLimit = 0;
-        int finishEdge = 0;
-        boolean fillFinish = false;
-
-        currentPosition = mViewCache.keyAt(0);
 
         View anchorView = getAnchorView();
 
-        //if (anchorView == null) return;
+        if (anchorView == null) return 0;
 
-        int baseItemDecoratedTop = getDecoratedTop(anchorView);
-
-
-
-        // 1. Расправляем верхний стек относительно якорной вьюхи
-        for (int i = mViewCache.indexOfValue(anchorView) - 1; i >= mViewCache.keyAt(0) ; i--){
-            View prevView = mViewCache.valueAt(i);
-            int edge = baseItemDecoratedTop - mTopMargin;
-            int prevViewBottom = getDecoratedBottom(prevView) + mBottomMargin;
-            int offset = edge - prevViewBottom;
-
-            mViewCache.valueAt(i).offsetTopAndBottom(offset);
-            baseItemDecoratedTop = getDecoratedTop(prevView);
-        }
-
-        int baseItemDecoratedBottom = getDecoratedBottom(anchorView);
-
-        // 2. Расправлем нижний стек
-        for (int i = mViewCache.indexOfValue(anchorView) + 1; i < mViewCache.size(); i++){
-            View nextView = mViewCache.valueAt(i);
-            int edge = baseItemDecoratedBottom + mBottomMargin;
-            int nextViewTop = getDecoratedTop(nextView) - mTopMargin;
-            int offset = edge - nextViewTop;
-
-            mViewCache.valueAt(i).offsetTopAndBottom(offset);
-            baseItemDecoratedBottom = getDecoratedBottom(nextView);
-        }
+        // Раскрываем стеки превращаем в обычный список
+        expandStack(anchorView);
 
         currentPosition = mViewCache.keyAt(mViewCache.size() - 1);
 
-        // Появился последний элемент
+        // Появился последний элемент, урезаем delta до момента когда полностью виден последний элемент
         if (mViewCache.keyAt(mViewCache.size() - 1) == getItemCount() - 1){
             int lastItemBottomEdge = getDecoratedBottom(mViewCache.get(getItemCount() - 1)) + mBottomMargin;
             int futureEdge = lastItemBottomEdge + delta;
             delta = futureEdge - getHeight() >= 0 ? delta : getHeight() - lastItemBottomEdge;
         }
 
-        // 3. Скролим
+        // Скролим
         for (int i = 0; i < mViewCache.size(); i++){
             mViewCache.valueAt(i).offsetTopAndBottom(delta);
         }
 
         View view = mViewCache.get(currentPosition);
-        baseItemDecoratedBottom = getDecoratedBottom(view) + mBottomMargin;
+        int baseItemDecoratedBottom = getDecoratedBottom(view) + mBottomMargin;
 
-        // 4. Добавляем нужные элементы снизу
-        while (++currentPosition < getItemCount()){
+        // Добавляем необходимые элементы после скрола
+        addItemsToScreen(recycler, currentPosition, baseItemDecoratedBottom);
+        // Сворачиваем в верхний стек
+        createTopStack(recycler);
+        // Сворачиваем в нижний стек
+        createBottomStack();
 
-            if (baseItemDecoratedBottom < getHeight() + (mMaxElementsInStack+1) * mDecoratedChildHeight) {
-                view = recycler.getViewForPosition(currentPosition);
+        return delta;
+    }
 
-                addView(view);
-                measureChildWithMargins(view, 0, 0);
+    private void createBottomStack() {
+        View anchorView;
+        int edgeLimit;
+        int anchorPos;
 
-                int leftEdge = mLeftMargin;
-                int rightEdge =  leftEdge + mDecoratedChildWidth;
-                int bottomEdge = mDecoratedChildHeight;
-                int topEdge = baseItemDecoratedBottom + mTopMargin;
+        // Cворачиваем в нижний стек
+        // Первый элемент чем верхний край выходит за нижний стек, он вытягивается и как только вытянулся начинают ехать другие элементы за ним
+        anchorView = getFirstViewInBottomStack();
 
-                layoutDecorated(view, leftEdge, topEdge, rightEdge, topEdge + bottomEdge);
-                detachView(view);
-                mViewCache.put(currentPosition, view);
+        Log.d(TAG, String.format("anchorView %d", mViewCache.indexOfValue(anchorView)));
 
-                baseItemDecoratedBottom = topEdge + bottomEdge;
+        if (anchorView != null) {
+
+            anchorPos = getPosition(anchorView);
+
+            // Элементы лежащие в видимом стеке
+            SparseArray<View> stack = new SparseArray<>();
+            int prevItemBottom = getDecoratedBottom(anchorView) + mBottomMargin + mTopMargin;
+
+            for (int i = anchorPos + ONE_ELEMENT_OFFSET; i <= anchorPos + mMaxElementsInStack  && i < getItemCount(); i++) {
+                stack.put(i, mViewCache.get(i));
+            }
+
+            edgeLimit = getHeight() - mItemHeightInStackInPx * (stack.size());
+            // Верхний элемент в стеке не может быть ближе к anchorView чем mItemHeightInStackInPx
+            edgeLimit = edgeLimit - getDecoratedTop(anchorView) > mItemHeightInStackInPx ?
+                    edgeLimit : getDecoratedTop(anchorView) + mItemHeightInStackInPx;
+            int bottomStackSize = getBottomStackSize();
+
+            for (int i = 0; i < stack.size(); i++){
+
+                int currentTop = getDecoratedTop(stack.valueAt(i));
+
+                int offset = edgeLimit - prevItemBottom >= 0 ? 0 : edgeLimit - currentTop;
+                stack.valueAt(i).offsetTopAndBottom(offset);
+
+                if (bottomStackSize < mMaxElementsInStack){
+                    // Если стек заканчивается, то элементы не тянем на верх
+                    edgeLimit = getHeight() - mItemHeightInStackInPx * (stack.size() - i - ONE_ELEMENT_OFFSET);
+                } else {
+                    edgeLimit = getDecoratedTop(stack.valueAt(i)) + mItemHeightInStackInPx;
+                }
+                prevItemBottom = getDecoratedBottom(stack.valueAt(i));
             }
         }
+    }
 
-        // 5. Сворачиваем в верхний стек
-
-        // Берем новую якорную вьюху после скрола
+    private void createTopStack(RecyclerView.Recycler recycler) {
+        View anchorView;
+        int edgeLimit;
         anchorView = getAnchorView();
         int anchorPos = getPosition(anchorView);
 
@@ -300,51 +302,59 @@ public class StackLayoutManager2 extends RecyclerView.LayoutManager {
                 edgeLimit = getDecoratedTop(mViewCache.valueAt(i)) + mItemHeightInStackInPx;
             }
         }
+    }
 
-        // 6. Cворачиваем в нижний стек
-        // Первый элемент чем верхний край выходит за нижний стек, он вытягивается и как только вытянулся начинают ехать другие элементы за ним
-        anchorView = getFirstViewInBottomStack();
+    private void addItemsToScreen(RecyclerView.Recycler recycler, int currentPosition, int startPosition) {
 
-        Log.d(TAG, String.format("anchorView %d", mViewCache.indexOfValue(anchorView)));
+        // Добавляем нужные элементы снизу
+        while (++currentPosition < getItemCount()){
 
-        if (anchorView != null) {
+            if (startPosition < getHeight() + mMaxElementsInStack * mDecoratedChildHeight) {
+                View view = recycler.getViewForPosition(currentPosition);
 
-            anchorPos = getPosition(anchorView);
+                addView(view);
+                measureChildWithMargins(view, 0, 0);
 
-            // Элементы лежащие в видимом стеке
-            SparseArray<View> stack = new SparseArray<>();
+                int leftEdge = mLeftMargin;
+                int rightEdge =  leftEdge + mDecoratedChildWidth;
+                int bottomEdge = mDecoratedChildHeight;
+                int topEdge = startPosition + mTopMargin;
 
-            int prevItemBottom = getDecoratedBottom(anchorView) + mBottomMargin + mTopMargin;
+                layoutDecorated(view, leftEdge, topEdge, rightEdge, topEdge + bottomEdge);
+                detachView(view);
+                mViewCache.put(currentPosition, view);
 
-            for (int i = anchorPos + 1; i <= anchorPos + mMaxElementsInStack  && i < getItemCount(); i++) {
-                stack.put(i, mViewCache.get(i));
+                startPosition = topEdge + bottomEdge;
             }
+        }
+    }
 
-            edgeLimit = getHeight() - mItemHeightInStackInPx * (stack.size());
+    private void expandStack(View anchorView) {
+        int baseItemDecoratedTop = getDecoratedTop(anchorView);
 
-            edgeLimit = edgeLimit - getDecoratedTop(anchorView) > mItemHeightInStackInPx ?
-                    edgeLimit : getDecoratedTop(anchorView) + mItemHeightInStackInPx;
-            int bottomStackSize = getBottomStackSize();
+        // Расправляем верхний стек относительно якорной вьюхи
+        for (int i = mViewCache.indexOfValue(anchorView) - ONE_ELEMENT_OFFSET; i >= mViewCache.keyAt(0) ; i--){
+            View prevView = mViewCache.valueAt(i);
+            int edge = baseItemDecoratedTop - mTopMargin;
+            int prevViewBottom = getDecoratedBottom(prevView) + mBottomMargin;
+            int offset = edge - prevViewBottom;
 
-            for (int i = 0; i < stack.size(); i++){
-
-                int currentTop = getDecoratedTop(stack.valueAt(i));
-
-                int offset = edgeLimit - prevItemBottom >= 0 ? 0 : edgeLimit - currentTop;
-                stack.valueAt(i).offsetTopAndBottom(offset);
-
-                if (bottomStackSize < mMaxElementsInStack){
-                    edgeLimit = getHeight() - mItemHeightInStackInPx * (stack.size() - i - 1);
-                } else {
-                    edgeLimit = getDecoratedTop(stack.valueAt(i)) + mItemHeightInStackInPx;
-                }
-                prevItemBottom = getDecoratedBottom(stack.valueAt(i));
-            }
-
-
+            mViewCache.valueAt(i).offsetTopAndBottom(offset);
+            baseItemDecoratedTop = getDecoratedTop(prevView);
         }
 
+        int baseItemDecoratedBottom = getDecoratedBottom(anchorView);
 
+        // Расправлем нижний стек
+        for (int i = mViewCache.indexOfValue(anchorView) + ONE_ELEMENT_OFFSET; i < mViewCache.size(); i++){
+            View nextView = mViewCache.valueAt(i);
+            int edge = baseItemDecoratedBottom + mBottomMargin;
+            int nextViewTop = getDecoratedTop(nextView) - mTopMargin;
+            int offset = edge - nextViewTop;
+
+            mViewCache.valueAt(i).offsetTopAndBottom(offset);
+            baseItemDecoratedBottom = getDecoratedBottom(nextView);
+        }
     }
 
     private View getAnchorView(){
@@ -362,7 +372,7 @@ public class StackLayoutManager2 extends RecyclerView.LayoutManager {
     private View getFirstViewInBottomStack(){
         View view = null;
 
-        for (int i = mViewCache.size() - 1; i >= 0; i-- ){
+        for (int i = mViewCache.size() - ONE_ELEMENT_OFFSET; i >= 0; i-- ){
             if (getDecoratedTop(mViewCache.valueAt(i)) <= getTopEdgeOfBottomStack()){
                 view = mViewCache.valueAt(i);
                 break;
