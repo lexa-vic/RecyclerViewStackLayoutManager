@@ -82,16 +82,27 @@ public class StackLayoutManager2 extends RecyclerView.LayoutManager {
             mBottomMargin = layoutParams.bottomMargin;
 
             detachAndScrapView(scrap, recycler);
-
-
-
         }
 
         // Делаем detach всех view на экране, помещаем в Scrap
         detachAndScrapAttachedViews(recycler);
 
+        fillViewCache();
+
+        if (mViewCache.size() == 0) {
+            int startViewPosition = 0;
+            int startAdapterPosition = -1;
+            addItemsToScreen(recycler, startAdapterPosition, startViewPosition);
+            createBottomStack();
+        }
+
+        attachViewCache();
+
+        mScrollState = ScrollState.SCROLL_NA;
+    }
+
+    private void fillViewCache() {
         mViewCache.clear();
-        mRemoveCache.clear();
 
         for (int i = 0; i < getChildCount(); i++){
             View view = getChildAt(i);
@@ -102,15 +113,6 @@ public class StackLayoutManager2 extends RecyclerView.LayoutManager {
         for (int i = 0; i < mViewCache.size(); i++){
             detachView(mViewCache.valueAt(i));
         }
-
-        fillDown(0, recycler);
-
-
-        for (int i = 0; i < mRemoveCache.size(); i++){
-            recycler.recycleView(mRemoveCache.valueAt(i));
-        }
-
-        mScrollState = ScrollState.SCROLL_NA;
     }
 
     @Override
@@ -131,28 +133,17 @@ public class StackLayoutManager2 extends RecyclerView.LayoutManager {
             return 0;
         }
 
-
-        mViewCache.clear();
-        mRemoveCache.clear();
-
-
-        if (dy > 0)
+     if (dy > 0)
         {
 
-            for (int i = 0; i < getChildCount(); i++){
-                View view = getChildAt(i);
-                int position = getPosition(view);
-                mViewCache.put(position, view);
-            }
+            fillViewCache();
 
-            for (int i = 0; i < mViewCache.size(); i++){
-                detachView(mViewCache.valueAt(i));
+            delta = scrollDown(dy, recycler);
+            Log.d(TAG, String.format("delta %d", delta));
 
-                //Log.d(TAG, String.format("detachView %d ", mViewCache.keyAt(i) ));
-            }
-            //delta = fillDown(dy, recycler);
-            scrollDown(dy, recycler);
             mScrollState = delta == 0 ? ScrollState.SCROLL_DOWN_END : ScrollState.SCROLL_NA;
+
+            attachViewCache();
         } else {
             //delta = fillUp(dy, recycler);
             //scrollDown(dy, recycler);
@@ -160,16 +151,15 @@ public class StackLayoutManager2 extends RecyclerView.LayoutManager {
         }
 
 
+
+
+        return dy;
+    }
+
+    private void attachViewCache() {
         for (int i = 0; i < mViewCache.size(); i++){
             attachView(mViewCache.valueAt(i));
         }
-
-        for (int i = 0; i < mRemoveCache.size(); i++){
-            removeAndRecycleView(mRemoveCache.valueAt(i), recycler);
-            //recycler.recycleView(mRemoveCache.valueAt(i));
-        }
-
-        return dy;
     }
 
     private int scrollDown(int dy, RecyclerView.Recycler recycler){
@@ -266,7 +256,9 @@ public class StackLayoutManager2 extends RecyclerView.LayoutManager {
         if (anchorPos > mMaxElementsInStack) {
 
             edgeLimit = mTopMargin;
+
             int firstPosInStack = anchorPos - mMaxElementsInStack - 1;
+            Log.d(TAG, String.format("firstPosInStack %d ,anchorPos %d", firstPosInStack, anchorPos));
             int offset = edgeLimit - getDecoratedTop(mViewCache.get(firstPosInStack));
             // Первый элемент оставляем на своем месте на него будут заезжать другие карты
             mViewCache.get(firstPosInStack).offsetTopAndBottom(offset);
@@ -304,13 +296,13 @@ public class StackLayoutManager2 extends RecyclerView.LayoutManager {
         }
     }
 
-    private void addItemsToScreen(RecyclerView.Recycler recycler, int currentPosition, int startPosition) {
+    private void addItemsToScreen(RecyclerView.Recycler recycler, int currentAdapterPosition, int startViewPosition) {
 
         // Добавляем нужные элементы снизу
-        while (++currentPosition < getItemCount()){
+        while (++currentAdapterPosition < getItemCount()){
 
-            if (startPosition < getHeight() + mMaxElementsInStack * mDecoratedChildHeight) {
-                View view = recycler.getViewForPosition(currentPosition);
+            if (startViewPosition < getHeight() + mMaxElementsInStack * mDecoratedChildHeight) {
+                View view = recycler.getViewForPosition(currentAdapterPosition);
 
                 addView(view);
                 measureChildWithMargins(view, 0, 0);
@@ -318,13 +310,13 @@ public class StackLayoutManager2 extends RecyclerView.LayoutManager {
                 int leftEdge = mLeftMargin;
                 int rightEdge =  leftEdge + mDecoratedChildWidth;
                 int bottomEdge = mDecoratedChildHeight;
-                int topEdge = startPosition + mTopMargin;
+                int topEdge = startViewPosition + mTopMargin;
 
                 layoutDecorated(view, leftEdge, topEdge, rightEdge, topEdge + bottomEdge);
                 detachView(view);
-                mViewCache.put(currentPosition, view);
+                mViewCache.put(currentAdapterPosition, view);
 
-                startPosition = topEdge + bottomEdge;
+                startViewPosition = topEdge + bottomEdge;
             }
         }
     }
@@ -379,322 +371,6 @@ public class StackLayoutManager2 extends RecyclerView.LayoutManager {
             }
         }
         return view;
-    }
-
-    /**
-     * Заполнение экрана при скролинге вверх - т.е. раскрываем низний стэк
-     * @param dy смещенние
-     * @param recycler RecyclerView.Recycler
-     */
-    private int fillDown(int dy, RecyclerView.Recycler recycler){
-        int currentPosition;
-        int delta;
-        int returnDelta = 0;
-        int currentTopEdge;
-        int futureTopEdge;
-        int edgeLimit = 0;
-        int finishEdge = 0;
-        boolean fillFinish = false;
-
-        currentPosition = mViewCache.keyAt(0);
-
-        while (currentPosition < getItemCount()){
-
-            // Берем вьюху из кэша detached вьюх
-            View view = mViewCache.get(currentPosition);
-
-            // Если нет вьюхи по этой позиции то достаем из ресайклера
-            if (view == null){
-                view = recycler.getViewForPosition(currentPosition);
-
-                addView(view);
-                measureChildWithMargins(view, 0, 0);
-
-                RecyclerView.LayoutParams layoutParams = (RecyclerView.LayoutParams)view.getLayoutParams();
-
-                int leftEdge = layoutParams.leftMargin;
-                int rightEdge =  leftEdge + mDecoratedChildWidth;
-                int bottomEdge = mDecoratedChildHeight;
-
-
-                if (mViewCache.get(currentPosition - ONE_ELEMENT_OFFSET) != null){
-                    int prevViewEdge = getDecoratedBottom(mViewCache.get(currentPosition - ONE_ELEMENT_OFFSET));
-                    // Нижний край заезжает за нижний стек надо складывать остальные в стек
-                    if (prevViewEdge >= getTopEdgeOfBottomStack()) {
-                        int bottomItems = getItemCount() - currentPosition;
-
-                        // Если элементов меньше чем максимальное кол-во в стеке, то они прижаты к низу
-                        if (bottomItems < mMaxElementsInStack) {
-                            // Кроме первого который на границе стека
-                            if (bottomEdge == mMaxElementsInStack - ONE_ELEMENT_OFFSET){
-                                currentTopEdge = getTopEdgeOfBottomStack();
-                            } else {
-                                currentTopEdge = getHeight() - mItemHeightInStackInPx * bottomItems;
-                            }
-                        } else {
-                            currentTopEdge = getTopEdgeOfBottomStack() + getBottomStackSize()*mItemHeightInStackInPx;
-                        }
-                    } else {
-                        currentTopEdge = prevViewEdge + layoutParams.bottomMargin + layoutParams.topMargin;
-                    }
-                } else {
-                    // Если нет предыдущего, то это самый верхний элемент
-                    currentTopEdge = layoutParams.topMargin;
-                }
-
-                if (currentTopEdge < getHeight()){
-                    layoutDecorated(view, leftEdge, currentTopEdge, rightEdge, currentTopEdge + bottomEdge);
-                    mViewCache.put(currentPosition, view);
-                } else {
-                    detachView(view);
-                    break;
-                }
-            } else {
-                currentTopEdge = getDecoratedTop(view);
-                RecyclerView.LayoutParams layoutParams = (RecyclerView.LayoutParams)view.getLayoutParams();
-
-                delta = -dy;
-                futureTopEdge = currentTopEdge + delta;
-
-                // Если становится виден полностью последний элемент
-                if (mViewCache.get(getItemCount() - ONE_ELEMENT_OFFSET) != null){
-                    View lastView = mViewCache.get(getItemCount() - ONE_ELEMENT_OFFSET);
-                    int lastViewFutureTopEdge = getDecoratedTop(lastView) + delta;
-                    int tmpEdgeLimit = getHeight() - mBottomMargin - mDecoratedChildHeight;
-                    fillFinish = true;
-                    // После скрола должен полностью быть виден
-                    if (lastViewFutureTopEdge <= tmpEdgeLimit) {
-                        // Вычисляем максимальное смещение которое может быть для последнего элемента
-                        int finishOffset = lastViewFutureTopEdge - tmpEdgeLimit > 0 ? -dy : tmpEdgeLimit - getDecoratedTop(lastView);
-                        // Устанавливаем финальную границу эелементов
-                        finishEdge = currentTopEdge + finishOffset;
-                    }
-                }
-
-                // Элементы нижнего стека
-                if (currentTopEdge >= getTopEdgeOfBottomStack()){
-
-                    edgeLimit = getDecoratedBottom(mViewCache.get(currentPosition - ONE_ELEMENT_OFFSET))
-                            + layoutParams.bottomMargin + layoutParams.topMargin;
-                    // Нижняя граница предыдущего элемента заходит в стек - он вытягивается
-                    if (edgeLimit >= currentTopEdge) {
-                        int prevTopEdge = getDecoratedTop(mViewCache.get(currentPosition - ONE_ELEMENT_OFFSET));
-
-                        if (fillFinish) {
-                            edgeLimit = currentTopEdge;
-                        } else if (prevTopEdge < getTopEdgeOfBottomStack()){ // Если вверхняя граница предыдущего элемента за стеком, то тянемся к границе стека
-                            edgeLimit = getTopEdgeOfBottomStack();
-                        } else {
-                            // Если предудщий ниже границы стека то соблюдаем отступ до него
-                            edgeLimit = prevTopEdge + mItemHeightInStackInPx;
-                        }
-                    }
-                    // Элементы выше нижнего стека
-                } else {
-                    // Если будущее положение элемента после скрола заезжает на верхний стек
-                    if (futureTopEdge < getBottomEdgeOfTopStack()){
-                        // Кол-во элементов в стеке меньше максимального
-                        if (getTopStackSize() <= mMaxElementsInStack){
-
-                            edgeLimit = layoutParams.topMargin;
-
-                            if (mViewCache.indexOfValue(view) != 0){
-                                edgeLimit = getDecoratedTop(mViewCache.get(currentPosition - ONE_ELEMENT_OFFSET)) + mItemHeightInStackInPx;
-                            }
-                        } else {
-                            // Кол-во элементов в стеке больше максимального
-                            // Надо подвинуть второй видимый элемент на первый и когда они сравняются удалить первый
-                            edgeLimit = layoutParams.topMargin;
-
-                            if (mViewCache.indexOfValue(view) > 1) {
-                                edgeLimit = getDecoratedTop(mViewCache.get(currentPosition - ONE_ELEMENT_OFFSET)) + mItemHeightInStackInPx;
-                            }
-
-                            if (mViewCache.get(currentPosition - ONE_ELEMENT_OFFSET) != null &&
-                                    getDecoratedTop(mViewCache.get(currentPosition - ONE_ELEMENT_OFFSET)) == currentTopEdge) {
-
-                                detachView(mViewCache.get(currentPosition - ONE_ELEMENT_OFFSET));
-
-                                mRemoveCache.put(currentPosition, mViewCache.get(currentPosition - ONE_ELEMENT_OFFSET));
-                                mViewCache.remove(currentPosition - ONE_ELEMENT_OFFSET);
-                            }
-                        }
-                    }
-                }
-
-                edgeLimit = Math.max(edgeLimit, finishEdge);
-
-                // Если будущее положения меньше допустимого, выставляем смещение такое чтоб элемент доехал до допустимой границы
-                delta = futureTopEdge - edgeLimit > 0 ? -dy : edgeLimit - currentTopEdge;
-
-                attachView(view);
-                view.offsetTopAndBottom(delta);
-
-                returnDelta = Math.min(delta, returnDelta);
-            }
-            currentPosition++;
-        }
-
-        return returnDelta;
-    }
-
-
-    /**
-     *
-     * Скролл вверх - раскрываем нижний стек
-     * @param dy смещенние
-     * @param recycler RecyclerView.Recycler
-     */
-    private int fillUp(int dy, RecyclerView.Recycler recycler){
-        int currentPosition;
-        int delta;
-        int returnDelta = 0;
-        int currentTopEdge;
-        int futureTopEdge;
-        int edgeLimit;
-        int finishEdge = getHeight();
-        boolean fillFinish = false;
-
-        currentPosition = mViewCache.keyAt(mViewCache.size() - 1);
-
-        while (currentPosition >= 0 && currentPosition < getItemCount()){
-
-            // Берем вьюху из кэша detached вьюх
-            View view = mViewCache.get(currentPosition);
-
-            edgeLimit = getHeight() - mItemHeightInStackInPx;
-
-            // Если нет вьюхи по этой позиции то достаем из ресайклера
-            if (view == null){
-
-                if (mViewCache.get(currentPosition + ONE_ELEMENT_OFFSET) != null &&
-                        getDecoratedTop(mViewCache.get(currentPosition + ONE_ELEMENT_OFFSET)) > mTopMargin + 10){
-                    view = recycler.getViewForPosition(currentPosition);
-
-                    addView(view);
-                    measureChildWithMargins(view, 0, 0);
-
-                    int leftEdge = mLeftMargin;
-                    int rightEdge =  leftEdge + mDecoratedChildWidth;
-                    int bottomEdge = mDecoratedChildHeight;
-
-                    // Если нет предыдущего, то это самый верхний элемент
-                    currentTopEdge = mTopMargin;
-
-                    layoutDecorated(view, leftEdge, currentTopEdge, rightEdge, currentTopEdge + bottomEdge);
-
-                    Log.d(TAG, String.format("addView %d ", currentPosition ));
-
-                    mViewCache.put(getPosition(view), view);
-                    detachView(view);
-                }
-
-            } else {
-                currentTopEdge = getDecoratedTop(view);
-
-                delta = -dy;
-                futureTopEdge = currentTopEdge + delta;
-
-                // Если
-                if (mViewCache.get(0) != null){
-                    View secondView = mViewCache.get(1);
-                    int secondViewFutureTopEdge = getDecoratedTop(secondView) + delta;
-                    int tmpEdgeLimit = getDecoratedBottom(mViewCache.get(0)) + mTopMargin + mBottomMargin;
-                    fillFinish = true;
-                    // После скрола должен полностью быть виден
-                    if (secondViewFutureTopEdge >= tmpEdgeLimit) {
-                        // Вычисляем максимальное смещение которое может быть других элементов кроме первого
-                        int finishOffset = tmpEdgeLimit - secondViewFutureTopEdge > 0 ? -dy : tmpEdgeLimit - getDecoratedTop(secondView);
-                        // Устанавливаем финальную границу эелементов
-                        finishEdge = currentTopEdge + finishOffset;
-                    }
-                }
-
-                // Элементы верхнего стека
-                if (currentTopEdge <= getBottomEdgeOfTopStack()
-                        && mViewCache.get(currentPosition + ONE_ELEMENT_OFFSET) != null
-                        && getDecoratedTop(mViewCache.get(currentPosition + ONE_ELEMENT_OFFSET)) <= getTopEdgeOfBottomStack()){
-                    // Элемент можеть уже выйти за экран и быть уничтожен
-
-                    int currentNextTopEdge = getDecoratedTop(mViewCache.get(currentPosition + ONE_ELEMENT_OFFSET));
-                    int currentBottomEdge = getDecoratedBottom(mViewCache.get(currentPosition)) + mTopMargin + mBottomMargin;
-
-                    Log.d(TAG, String.format("currentTopEdge currentPos %d", currentPosition));
-
-                    if (currentNextTopEdge >= currentBottomEdge){
-                        edgeLimit = currentNextTopEdge - mTopMargin - mBottomMargin - mDecoratedChildHeight;
-                    } else {
-
-                        if (fillFinish){
-                            edgeLimit = currentTopEdge;
-                        } else  if (currentNextTopEdge > getBottomEdgeOfTopStack()){
-                            edgeLimit = getBottomEdgeOfTopStack();
-                        }
-                        else {
-                            if (currentPosition == 0){
-                                edgeLimit = mTopMargin;
-                            } else {
-                                edgeLimit = currentNextTopEdge - mItemHeightInStackInPx;
-                                edgeLimit = edgeLimit <= mTopMargin ? mTopMargin : edgeLimit;
-                            }
-                        }
-                    }
-
-                    // Элементы ниже верхнего стека
-                } else {
-
-                    // Если будущее положение элемента после скрола заезжает на нижний стек
-                    if (futureTopEdge + mDecoratedChildHeight > getTopEdgeOfBottomStack()){
-                        // Кол-во элементов в стеке меньше максимального
-                        if (getBottomStackSize() < mMaxElementsInStack){
-
-                            edgeLimit = getHeight() - mItemHeightInStackInPx;
-
-                            Log.d(TAG, String.format("mViewCache.size %d currentPos %d", mViewCache.size(), currentPosition));
-
-                            if (mViewCache.indexOfValue(view) != mViewCache.size() - 1){
-
-                                edgeLimit = getDecoratedTop(mViewCache.get(currentPosition + ONE_ELEMENT_OFFSET)) - mItemHeightInStackInPx;
-                            }
-                        } else {
-                            // Кол-во элементов в стеке больше максимального
-                            // Надо подвинуть предпоследний видимый элемент на последний и когда они сравняются удалить последний
-                            edgeLimit = getHeight() - mItemHeightInStackInPx;
-
-
-                            if (mViewCache.indexOfValue(view) == mViewCache.size() - 1) {
-                                edgeLimit = getHeight();
-                            }
-
-                            if (futureTopEdge >= getHeight()){
-                                mRemoveCache.put(currentPosition, mViewCache.get(currentPosition));
-                                mViewCache.remove(currentPosition);
-                                Log.d(TAG, String.format("mViewCache.remove %d ", currentPosition ));
-                                currentPosition--;
-                                continue;
-                            }
-                        }
-                    }
-                }
-
-                edgeLimit = Math.min(edgeLimit, finishEdge);
-
-                // Если будущее положения меньше допустимого, выставляем смещение такое чтоб элемент доехал до допустимой границы
-                delta = edgeLimit - futureTopEdge > 0 ? -dy : edgeLimit - currentTopEdge;
-
-                returnDelta = Math.max(delta, returnDelta);
-                view.offsetTopAndBottom(delta);
-            }
-            currentPosition--;
-        }
-
-        for (int i = 0; i < mViewCache.size(); i++){
-
-            View view = mViewCache.valueAt(i);
-            attachView(view);
-        }
-
-        return returnDelta;
     }
 
     /**
