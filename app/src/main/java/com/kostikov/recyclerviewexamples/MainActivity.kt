@@ -12,7 +12,7 @@ class MainActivity : AppCompatActivity() {
 
         with(recyclerView){
 
-            layoutManager = StackLayoutManager()
+            layoutManager = StackLayoutManager2()
             adapter = CardsAdapter(cardsListData)
             itemAnimator = SampleItemAnimator()
 
