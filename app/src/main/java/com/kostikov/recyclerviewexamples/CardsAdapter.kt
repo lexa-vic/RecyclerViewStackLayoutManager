@@ -1,7 +1,6 @@
 package com.kostikov.recyclerviewexamples
 
 import android.content.res.ColorStateList
-import android.support.v7.util.DiffUtil
 import android.support.v7.widget.CardView
 import android.support.v7.widget.RecyclerView
 import android.util.Log
@@ -18,6 +17,7 @@ import org.jetbrains.anko.find
 class CardsAdapter(cardList: List<CardEntity>): RecyclerView.Adapter<CardsAdapter.ViewHolder>() {
 
     private var cardListBuf: MutableList<CardEntity>
+
 
     init {
         setHasStableIds(true)
@@ -41,14 +41,16 @@ class CardsAdapter(cardList: List<CardEntity>): RecyclerView.Adapter<CardsAdapte
 
     override fun getItemCount() = cardListBuf.size
 
-    fun swapData( newCardList: List<CardEntity>) {
-        val callback = CardsDiffUtilCallbacks(cardListBuf, newCardList )
-        val result = DiffUtil.calculateDiff(callback)
-
+    fun swapData( newCardList: List<CardEntity>, animate: Boolean) {
         cardListBuf.clear()
         cardListBuf.addAll(newCardList)
 
-        result.dispatchUpdatesTo(this)
+        if (animate) {
+            notifyItemRangeInserted(0, cardListBuf.size)
+        } else {
+            notifyDataSetChanged()
+        }
+
     }
 
     class ViewHolder(view: View) : RecyclerView.ViewHolder(view){

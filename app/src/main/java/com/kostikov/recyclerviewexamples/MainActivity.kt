@@ -1,7 +1,9 @@
 package com.kostikov.recyclerviewexamples
 
 import android.os.Bundle
+import android.os.Handler
 import android.support.v7.app.AppCompatActivity
+import com.kostikov.recyclerviewexamples.animations.SpringAppearanceAnimator
 import kotlinx.android.synthetic.main.activity_main.*
 
 class MainActivity : AppCompatActivity() {
@@ -11,20 +13,19 @@ class MainActivity : AppCompatActivity() {
         setContentView(R.layout.activity_main)
 
         with(recyclerView){
-
-            layoutManager = StackLayoutManager2()
-            adapter = CardsAdapter(cardsListData)
-            itemAnimator = SampleItemAnimator()
+            layoutManager = StackLayoutManager()
+            adapter = CardsAdapter(emptyList())
+            itemAnimator = SpringAppearanceAnimator()
 
             setHasFixedSize(true)
         }
 
-        /*fabAll.setOnClickListener {
-            (recyclerView.adapter as CardsAdapter).swapData(cardsListData) }
-        fabDell.setOnClickListener {
-            (recyclerView.adapter as CardsAdapter).swapData(cardsListData.filter {
-                cardEntity -> cardEntity.id.toInt() % 2 == 0 })
-        }*/
+        val handler = Handler()
+
+        handler.postDelayed({
+           (recyclerView.adapter as CardsAdapter).swapData(cardsListData, true)
+            recyclerView.adapter.notifyItemRangeInserted(0, cardsListData.size)
+        }, 200)
     }
 
 }
